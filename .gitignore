@@ -1,0 +1,23 @@
+# Playdate build artifacts
+*.pdx/
+builds/*
+
+# macOS specific files
+.DS_Store
+
+# Windows specific files
+Thumbs.db
+Desktop.ini
+
+# Editor-specific files (e.g., VS Code)
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Lua specific (though less common to ignore in Lua)
+# *.lua.orig
+# *.lua.bak
+
+# Log files or temporary files
+*.log
+temp/
