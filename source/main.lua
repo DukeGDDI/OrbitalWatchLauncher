@@ -5,42 +5,41 @@ import "CoreLibs/timer"
 
 local gfx <const> = playdate.graphics
 
--- screen dimensions
+-- ===== Screen =====
 local screenW, screenH = 400, 240
 
--- ========= Config =========
-local MIN_DISTANCE       = 15
-local MAX_DISTANCE       = 250
-local ROTATE_SPEED       = 5              -- deg/frame
-local CRANK_SENSITIVITY  = 0.35           -- px per crank degree
+-- ===== Config =====
+local MIN_DISTANCE        = 15
+local MAX_DISTANCE        = 250
 
-local MISSILE_SPEED      = 4.0            -- px/frame
-local MISSILE_SIZE       = 2              -- px (visual)
-local TRAIL_MAX_POINTS   = 30             -- stored trail vertices per missile
-local TRAIL_STEP         = 3              -- add a new trail point every N px traveled
+local DISTANCE_SPEED      = 5.0     -- px/frame when holding Up/Down
+local CRANK_ANGLE_SENS    = 1.0     -- deg of reticle rotation per 1 deg crank change
 
-local EXPLOSION_MAX_RADIUS = 22           -- px (configurable explosion radius)
-local EXPLOSION_GROWTH     = 1.8          -- px/frame
+local MISSILE_SPEED       = 4.0     -- px/frame
+local MISSILE_SIZE        = 2
+local TRAIL_MAX_POINTS    = 30
+local TRAIL_STEP          = 3
 
--- ========= State =========
+local EXPLOSION_MAX_RADIUS = 22
+local EXPLOSION_GROWTH     = 1.8
+
+local TARGET_CROSS        = 5
+
+-- ===== State =====
 local reticleAngle = 270
 local reticleDistance = 60
 
-local TARGET_CROSS = 5
-local targets = {}        -- { {x=, y=} ... }
+local targets = {}        -- { {x=, y=} }
+local missiles = {}       -- see struct below
 
--- missiles: each is
--- { x, y, tx, ty, vx, vy, speed, state="flying"|"exploding", explosionR, trail={ {x,y}... }, lastTrailX, lastTrailY }
-local missiles = {}
-
--- ========= Helpers =========
+-- ===== Utils =====
 local function clamp(v, lo, hi)
     if v < lo then return lo end
     if v > hi then return hi end
     return v
 end
 
--- ========= Target Marking =========
+-- ===== Targets =====
 local function markTarget(x, y)
     table.insert(targets, { x = x, y = y })
 end
@@ -52,8 +51,8 @@ local function drawTargets()
     end
 end
 
--- ========= Missile System =========
--- ========= Missile System =========
+-- ===== Missiles =====
+-- missile: { x,y, tx,ty, vx,vy, speed, state="flying"|"exploding", explosionR, trail={}, lastTrailX,lastTrailY }
 local function launchMissile(targetX, targetY)
     local originX, originY = screenW/2, screenH
     local dx, dy = (targetX - originX), (targetY - originY)
@@ -82,7 +81,6 @@ local function updateMissiles()
         local m = missiles[i]
 
         if m.state == "flying" then
-            -- advance missile
             m.x += m.vx
             m.y += m.vy
 
@@ -96,15 +94,15 @@ local function updateMissiles()
                 end
             end
 
-            -- check arrival at target
-            local toTargetX, toTargetY = (m.tx - m.x), (m.ty - m.y)
-            local dist2 = toTargetX*toTargetX + toTargetY*toTargetY
+            -- arrival check
+            local txd, tyd = (m.tx - m.x), (m.ty - m.y)
+            local dist2 = txd*txd + tyd*tyd
             if dist2 <= (m.speed * m.speed) then
                 m.x, m.y = m.tx, m.ty
                 m.state = "exploding"
                 m.explosionR = 0
 
-                -- remove the target mark at this coordinate
+                -- remove target mark at this coordinate (±2 px)
                 for t = #targets, 1, -1 do
                     if math.abs(targets[t].x - m.tx) < 2 and math.abs(targets[t].y - m.ty) < 2 then
                         table.remove(targets, t)
@@ -116,31 +114,28 @@ local function updateMissiles()
         elseif m.state == "exploding" then
             m.explosionR += EXPLOSION_GROWTH
             if m.explosionR >= EXPLOSION_MAX_RADIUS then
-                table.remove(missiles, i) -- remove missile after explosion
+                table.remove(missiles, i)
             end
         end
     end
 end
 
-
 local function drawMissiles()
     for _, m in ipairs(missiles) do
         if m.state == "flying" then
-            -- trail (polyline)
+            -- trail
             if #m.trail > 1 then
                 for j = 2, #m.trail do
                     local a, b = m.trail[j-1], m.trail[j]
                     gfx.drawLine(a.x, a.y, b.x, b.y)
                 end
             end
-            -- tiny missile body (primitive): a small filled circle + nose line
+            -- tiny missile primitives
             gfx.fillCircleAtPoint(m.x, m.y, MISSILE_SIZE)
             gfx.drawLine(m.x, m.y, m.x + (m.vx * 2), m.y + (m.vy * 2))
 
         elseif m.state == "exploding" then
-            -- expanding ring explosion
             gfx.drawCircleAtPoint(m.x, m.y, m.explosionR)
-            -- optional: inner ring for style
             if m.explosionR > 6 then
                 gfx.drawCircleAtPoint(m.x, m.y, m.explosionR * 0.6)
             end
@@ -148,19 +143,19 @@ local function drawMissiles()
     end
 end
 
--- ========= Reticle =========
+-- ===== Reticle (new control mapping) =====
 local function moveReticle()
-    -- range via relative crank delta
-    local crankDeltaDeg = playdate.getCrankChange()
-    reticleDistance += crankDeltaDeg * CRANK_SENSITIVITY
-    reticleDistance = clamp(reticleDistance, MIN_DISTANCE, MAX_DISTANCE)
+    -- ROTATION via crank (relative)
+    local crankDeltaDeg = playdate.getCrankChange()  -- +/-
+    reticleAngle += crankDeltaDeg * CRANK_ANGLE_SENS
 
-    -- angle via dpad
-    if playdate.buttonIsPressed(playdate.kButtonLeft) then
-        reticleAngle -= ROTATE_SPEED
-    elseif playdate.buttonIsPressed(playdate.kButtonRight) then
-        reticleAngle += ROTATE_SPEED
+    -- DISTANCE via Up/Down buttons
+    if playdate.buttonIsPressed(playdate.kButtonUp) then
+        reticleDistance += DISTANCE_SPEED
+    elseif playdate.buttonIsPressed(playdate.kButtonDown) then
+        reticleDistance -= DISTANCE_SPEED
     end
+    reticleDistance = clamp(reticleDistance, MIN_DISTANCE, MAX_DISTANCE)
 
     -- polar -> cartesian
     local rad = math.rad(reticleAngle)
@@ -168,7 +163,7 @@ local function moveReticle()
     local reticleX = originX + math.cos(rad) * reticleDistance
     local reticleY = originY + math.sin(rad) * reticleDistance
 
-    -- draw guide line and live crosshair
+    -- guide & live crosshair
     gfx.drawLine(originX, originY, reticleX, reticleY)
     local liveCross = 5
     gfx.drawLine(reticleX - liveCross, reticleY, reticleX + liveCross, reticleY)
@@ -177,22 +172,21 @@ local function moveReticle()
     return reticleX, reticleY
 end
 
--- ========= Main Loop =========
+-- ===== Main Loop =====
 function playdate.update()
     gfx.clear()
 
     local x, y = moveReticle()
 
-    -- Up: mark + launch
-    if playdate.buttonJustPressed(playdate.kButtonUp) then
+    -- LEFT: launch missile (and mark target)
+    if playdate.buttonJustPressed(playdate.kButtonLeft) then
         markTarget(x, y)
         launchMissile(x, y)
     end
 
-    -- Down: clear all markers and missiles (optional)
-    if playdate.buttonJustPressed(playdate.kButtonDown) then
+    -- RIGHT: EMP / clear all markers
+    if playdate.buttonJustPressed(playdate.kButtonRight) then
         targets = {}
-        missiles = {}
     end
 
     updateMissiles()
