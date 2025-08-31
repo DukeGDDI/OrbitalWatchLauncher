@@ -9,28 +9,30 @@ local gfx <const> = playdate.graphics
 local screenW, screenH = 400, 240
 
 -- ===== Config =====
-local MIN_DISTANCE        = 15
-local MAX_DISTANCE        = 250
+local MIN_DISTANCE         = 15
+local MAX_DISTANCE         = 250
 
-local DISTANCE_SPEED      = 5.0     -- px/frame when holding Up/Down
-local CRANK_ANGLE_SENS    = 1.0     -- deg of reticle rotation per 1 deg crank change
+local DISTANCE_SPEED       = 2.2     -- px/frame (Up/Down)
+local CRANK_ANGLE_SENS     = 1.0     -- deg of reticle rotation per 1 deg crank change
 
-local MISSILE_SPEED       = 4.0     -- px/frame
-local MISSILE_SIZE        = 2
-local TRAIL_MAX_POINTS    = 30
-local TRAIL_STEP          = 3
+local MISSILE_SPEED        = 4.0
+local MISSILE_SIZE         = 2
+local TRAIL_MAX_POINTS     = 30
+local TRAIL_STEP           = 3
 
+-- Explosion sprite tuning (collision-enabled)
 local EXPLOSION_MAX_RADIUS = 22
 local EXPLOSION_GROWTH     = 1.8
+local EXPLOSION_Z          = 100     -- draw on top of primitives
 
-local TARGET_CROSS        = 5
+local TARGET_CROSS         = 5
 
 -- ===== State =====
 local reticleAngle = 270
 local reticleDistance = 60
 
 local targets = {}        -- { {x=, y=} }
-local missiles = {}       -- see struct below
+local missiles = {}       -- missiles are tables (primitives), explosions are sprites
 
 -- ===== Utils =====
 local function clamp(v, lo, hi)
@@ -38,6 +40,64 @@ local function clamp(v, lo, hi)
     if v > hi then return hi end
     return v
 end
+
+-- ===== Explosion Sprite (instance-based, no metatable) =====
+-- Creates a sprite, attaches fields, and defines s:update() inline.
+local function newExplosion(x, y)
+    local s = gfx.sprite.new()
+
+    -- custom fields
+    s.cx, s.cy = x, y
+    s.r = 0
+    s.maxR = EXPLOSION_MAX_RADIUS
+    s.growth = EXPLOSION_GROWTH
+
+    -- position & draw order
+    s:moveTo(x, y)           -- center is (x,y)
+    s:setZIndex(EXPLOSION_Z)
+
+    -- start with a 1x1 image; we'll rebuild it as we grow
+    local img = gfx.image.new(1, 1)
+    s:setImage(img)
+    s:setCollideRect(0, 0, 1, 1)
+
+    -- per-frame growth + redraw + collision box sync
+    function s:update()
+        self.r += self.growth
+        if self.r >= self.maxR then
+            self:remove()
+            return
+        end
+
+        local d = math.max(1, math.ceil(self.r * 2))
+
+        -- redraw rings at new diameter
+        local newImg = gfx.image.new(d, d)
+        gfx.pushContext(newImg)
+            gfx.drawCircleInRect(0, 0, d, d)
+            local inner = math.floor(self.r * 0.6) * 2
+            if inner > 2 then
+                local inset = math.floor((d - inner) / 2)
+                gfx.drawCircleInRect(inset, inset, inner, inner)
+            end
+        gfx.popContext()
+
+        self:setImage(newImg)
+        self:setCollideRect(0, 0, d, d)
+
+        -- Example: detect overlaps (uncomment when you have other sprites)
+        -- for _, other in ipairs(self:overlappingSprites()) do
+        --     -- handle overlap with other
+        -- end
+    end
+
+    s:add()
+    return s
+end
+
+
+
+
 
 -- ===== Targets =====
 local function markTarget(x, y)
@@ -51,8 +111,8 @@ local function drawTargets()
     end
 end
 
--- ===== Missiles =====
--- missile: { x,y, tx,ty, vx,vy, speed, state="flying"|"exploding", explosionR, trail={}, lastTrailX,lastTrailY }
+-- ===== Missiles (primitive, not sprites) =====
+-- missile: { x,y, tx,ty, vx,vy, speed, trail={}, lastTrailX,lastTrailY }
 local function launchMissile(targetX, targetY)
     local originX, originY = screenW/2, screenH
     local dx, dy = (targetX - originX), (targetY - originY)
@@ -67,8 +127,6 @@ local function launchMissile(targetX, targetY)
         tx = targetX, ty = targetY,
         vx = vx, vy = vy,
         speed = MISSILE_SPEED,
-        state = "flying",
-        explosionR = 0,
         trail = {},
         lastTrailX = originX,
         lastTrailY = originY
@@ -80,76 +138,67 @@ local function updateMissiles()
     for i = #missiles, 1, -1 do
         local m = missiles[i]
 
-        if m.state == "flying" then
-            m.x += m.vx
-            m.y += m.vy
+        -- advance
+        m.x += m.vx
+        m.y += m.vy
 
-            -- add to trail
-            local dx, dy = (m.x - m.lastTrailX), (m.y - m.lastTrailY)
-            if (dx*dx + dy*dy) >= (TRAIL_STEP * TRAIL_STEP) then
-                table.insert(m.trail, { x = m.x, y = m.y })
-                m.lastTrailX, m.lastTrailY = m.x, m.y
-                if #m.trail > TRAIL_MAX_POINTS then
-                    table.remove(m.trail, 1)
+        -- trail
+        local dx, dy = (m.x - m.lastTrailX), (m.y - m.lastTrailY)
+        if (dx*dx + dy*dy) >= (TRAIL_STEP * TRAIL_STEP) then
+            table.insert(m.trail, { x = m.x, y = m.y })
+            m.lastTrailX, m.lastTrailY = m.x, m.y
+            if #m.trail > TRAIL_MAX_POINTS then
+                table.remove(m.trail, 1)
+            end
+        end
+
+        -- arrival?
+        local txd, tyd = (m.tx - m.x), (m.ty - m.y)
+        local dist2 = txd*txd + tyd*tyd
+        if dist2 <= (m.speed * m.speed) then
+            -- Snap to target
+            m.x, m.y = m.tx, m.ty
+
+            -- Remove matching target mark (±2px)
+            for t = #targets, 1, -1 do
+                if math.abs(targets[t].x - m.tx) < 2 and math.abs(targets[t].y - m.ty) < 2 then
+                    table.remove(targets, t)
+                    break
                 end
             end
 
-            -- arrival check
-            local txd, tyd = (m.tx - m.x), (m.ty - m.y)
-            local dist2 = txd*txd + tyd*tyd
-            if dist2 <= (m.speed * m.speed) then
-                m.x, m.y = m.tx, m.ty
-                m.state = "exploding"
-                m.explosionR = 0
+            -- Spawn explosion **sprite** (with collision)
+            newExplosion(m.x, m.y)
 
-                -- remove target mark at this coordinate (±2 px)
-                for t = #targets, 1, -1 do
-                    if math.abs(targets[t].x - m.tx) < 2 and math.abs(targets[t].y - m.ty) < 2 then
-                        table.remove(targets, t)
-                        break
-                    end
-                end
-            end
 
-        elseif m.state == "exploding" then
-            m.explosionR += EXPLOSION_GROWTH
-            if m.explosionR >= EXPLOSION_MAX_RADIUS then
-                table.remove(missiles, i)
-            end
+            -- Remove missile (now handled visually by sprite)
+            table.remove(missiles, i)
         end
     end
 end
 
 local function drawMissiles()
     for _, m in ipairs(missiles) do
-        if m.state == "flying" then
-            -- trail
-            if #m.trail > 1 then
-                for j = 2, #m.trail do
-                    local a, b = m.trail[j-1], m.trail[j]
-                    gfx.drawLine(a.x, a.y, b.x, b.y)
-                end
-            end
-            -- tiny missile primitives
-            gfx.fillCircleAtPoint(m.x, m.y, MISSILE_SIZE)
-            gfx.drawLine(m.x, m.y, m.x + (m.vx * 2), m.y + (m.vy * 2))
-
-        elseif m.state == "exploding" then
-            gfx.drawCircleAtPoint(m.x, m.y, m.explosionR)
-            if m.explosionR > 6 then
-                gfx.drawCircleAtPoint(m.x, m.y, m.explosionR * 0.6)
+        -- trail
+        if #m.trail > 1 then
+            for j = 2, #m.trail do
+                local a, b = m.trail[j-1], m.trail[j]
+                gfx.drawLine(a.x, a.y, b.x, b.y)
             end
         end
+        -- tiny missile primitives
+        gfx.fillCircleAtPoint(m.x, m.y, MISSILE_SIZE)
+        gfx.drawLine(m.x, m.y, m.x + (m.vx * 2), m.y + (m.vy * 2))
     end
 end
 
--- ===== Reticle (new control mapping) =====
+-- ===== Reticle (current mapping) =====
 local function moveReticle()
-    -- ROTATION via crank (relative)
-    local crankDeltaDeg = playdate.getCrankChange()  -- +/-
+    -- rotation via crank
+    local crankDeltaDeg = playdate.getCrankChange()
     reticleAngle += crankDeltaDeg * CRANK_ANGLE_SENS
 
-    -- DISTANCE via Up/Down buttons
+    -- distance via Up/Down
     if playdate.buttonIsPressed(playdate.kButtonUp) then
         reticleDistance += DISTANCE_SPEED
     elseif playdate.buttonIsPressed(playdate.kButtonDown) then
@@ -163,7 +212,7 @@ local function moveReticle()
     local reticleX = originX + math.cos(rad) * reticleDistance
     local reticleY = originY + math.sin(rad) * reticleDistance
 
-    -- guide & live crosshair
+    -- guide & crosshair
     gfx.drawLine(originX, originY, reticleX, reticleY)
     local liveCross = 5
     gfx.drawLine(reticleX - liveCross, reticleY, reticleX + liveCross, reticleY)
@@ -176,9 +225,12 @@ end
 function playdate.update()
     gfx.clear()
 
+    -- Update & draw all explosion sprites (and any others)
+    gfx.sprite.update()
+
     local x, y = moveReticle()
 
-    -- LEFT: launch missile (and mark target)
+    -- LEFT: launch missile & mark
     if playdate.buttonJustPressed(playdate.kButtonLeft) then
         markTarget(x, y)
         launchMissile(x, y)
