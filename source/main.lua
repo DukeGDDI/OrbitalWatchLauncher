@@ -30,6 +30,8 @@ local TARGET_CROSS         = 5
 -- ===== State =====
 local reticleAngle = 270
 local reticleDistance = 60
+local currentReticleX, currentReticleY = 0, 0
+
 
 local targets = {}        -- { {x=, y=} }
 local missiles = {}       -- missiles are tables (primitives), explosions are sprites
@@ -209,39 +211,67 @@ local function moveReticle()
     -- polar -> cartesian
     local rad = math.rad(reticleAngle)
     local originX, originY = screenW/2, screenH
-    local reticleX = originX + math.cos(rad) * reticleDistance
-    local reticleY = originY + math.sin(rad) * reticleDistance
-
-    -- guide & crosshair
-    gfx.drawLine(originX, originY, reticleX, reticleY)
-    local liveCross = 5
-    gfx.drawLine(reticleX - liveCross, reticleY, reticleX + liveCross, reticleY)
-    gfx.drawLine(reticleX, reticleY - liveCross, reticleX, reticleY + liveCross)
-
-    return reticleX, reticleY
+    currentReticleX = originX + math.cos(rad) * reticleDistance
+    currentReticleY = originY + math.sin(rad) * reticleDistance
 end
+
+-- ===== Put all primitive drawing in one function we can call from background
+local function drawWorld()
+    gfx.clear()
+
+    -- guide & live crosshair
+    local originX, originY = screenW/2, screenH
+    gfx.drawLine(originX, originY, currentReticleX, currentReticleY)
+    local liveCross = 5
+    gfx.drawLine(currentReticleX - liveCross, currentReticleY, currentReticleX + liveCross, currentReticleY)
+    gfx.drawLine(currentReticleX, currentReticleY - liveCross, currentReticleX, currentReticleY + liveCross)
+
+    -- targets
+    for _, t in ipairs(targets) do
+        gfx.drawLine(t.x - TARGET_CROSS, t.y, t.x + TARGET_CROSS, t.y)
+        gfx.drawLine(t.x, t.y - TARGET_CROSS, t.x, t.y + TARGET_CROSS)
+    end
+
+    -- missiles (trail + body)
+    for _, m in ipairs(missiles) do
+        if #m.trail > 1 then
+            for j = 2, #m.trail do
+                local a, b = m.trail[j-1], m.trail[j]
+                gfx.drawLine(a.x, a.y, b.x, b.y)
+            end
+        end
+        gfx.fillCircleAtPoint(m.x, m.y, MISSILE_SIZE)
+        gfx.drawLine(m.x, m.y, m.x + (m.vx * 2), m.y + (m.vy * 2))
+    end
+end
+
+-- ==== Register a background drawing callback so sprites won’t wipe your primitives
+gfx.sprite.setBackgroundDrawingCallback(function(x, y, w, h)
+    -- Redraw your entire primitive scene. (Simple & safe; can optimize later.)
+    drawWorld()
+end)
+
 
 -- ===== Main Loop =====
 function playdate.update()
-    gfx.clear()
+    -- input/state
+    moveReticle()
 
-    -- Update & draw all explosion sprites (and any others)
-    gfx.sprite.update()
-
-    local x, y = moveReticle()
-
-    -- LEFT: launch missile & mark
+    -- fire / EMP
     if playdate.buttonJustPressed(playdate.kButtonLeft) then
-        markTarget(x, y)
-        launchMissile(x, y)
+        markTarget(currentReticleX, currentReticleY)
+        launchMissile(currentReticleX, currentReticleY)
     end
-
-    -- RIGHT: EMP / clear all markers
     if playdate.buttonJustPressed(playdate.kButtonRight) then
         targets = {}
+        -- (leave missiles flying; add missiles = {} here if EMP should cancel them)
     end
 
     updateMissiles()
-    drawTargets()
-    drawMissiles()
+
+    -- draw primitives now (so you see them even before the first explosion sprite ever spawns)
+    drawWorld()
+
+    -- draw sprites (explosions)
+    gfx.sprite.update()
 end
