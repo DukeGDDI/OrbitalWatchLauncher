@@ -27,6 +27,13 @@ local EXPLOSION_Z          = 100     -- draw on top of primitives
 
 local TARGET_CROSS         = 5
 
+-- Enemy Missile Config
+local ENEMY_MISSILE_SPEED   = 2.8   -- px/frame (slightly slower than player)
+local ENEMY_TRAIL_MAX_POINTS= 30
+local ENEMY_TRAIL_STEP      = 3
+local ENEMY_MISSILE_SIZE    = 2
+
+
 -- ===== State =====
 local reticleAngle = 270
 local reticleDistance = 60
@@ -35,6 +42,10 @@ local currentReticleX, currentReticleY = 0, 0
 
 local targets = {}        -- { {x=, y=} }
 local missiles = {}       -- missiles are tables (primitives), explosions are sprites
+local enemies = {}   -- enemy missiles (same structure as player missiles)
+
+-- Forward declaration so functions defined above can call it
+local newExplosion
 
 -- ===== Utils =====
 local function clamp(v, lo, hi)
@@ -43,9 +54,69 @@ local function clamp(v, lo, hi)
     return v
 end
 
+-- Launch an enemy missile from top (xOrigin, 0) to ground (xTarget, screenH)
+local function launchEnemyMissile(xOrigin, xTarget)
+    -- clamp to screen so we don't spawn off-screen
+    xOrigin = clamp(xOrigin, 0, screenW)
+    xTarget = clamp(xTarget, 0, screenW)
+
+    local originX, originY = xOrigin, 0
+    local targetX, targetY = xTarget, screenH
+
+    local dx, dy = (targetX - originX), (targetY - originY)
+    local len = math.sqrt(dx*dx + dy*dy)
+    if len < 0.001 then return end
+
+    local vx = (dx / len) * ENEMY_MISSILE_SPEED
+    local vy = (dy / len) * ENEMY_MISSILE_SPEED
+
+    local e = {
+        x = originX, y = originY,
+        tx = targetX, ty = targetY,
+        vx = vx, vy = vy,
+        speed = ENEMY_MISSILE_SPEED,
+        trail = {},
+        lastTrailX = originX,
+        lastTrailY = originY
+    }
+    table.insert(enemies, e)
+end
+
+local function updateEnemies()
+    for i = #enemies, 1, -1 do
+        local e = enemies[i]
+
+        -- advance
+        e.x += e.vx
+        e.y += e.vy
+
+        -- trail (same style)
+        local dx, dy = (e.x - e.lastTrailX), (e.y - e.lastTrailY)
+        if (dx*dx + dy*dy) >= (ENEMY_TRAIL_STEP * ENEMY_TRAIL_STEP) then
+            table.insert(e.trail, { x = e.x, y = e.y })
+            e.lastTrailX, e.lastTrailY = e.x, e.y
+            if #e.trail > ENEMY_TRAIL_MAX_POINTS then
+                table.remove(e.trail, 1)
+            end
+        end
+
+        -- arrival?
+        local txd, tyd = (e.tx - e.x), (e.ty - e.y)
+        local dist2 = txd*txd + tyd*tyd
+        if dist2 <= (e.speed * e.speed) then
+            -- snap to target, spawn explosion, remove enemy
+            e.x, e.y = e.tx, e.ty
+            newExplosion(e.x, e.y)
+            table.remove(enemies, i)
+        end
+    end
+end
+
+
+
 -- ===== Explosion Sprite (instance-based, no metatable) =====
 -- Creates a sprite, attaches fields, and defines s:update() inline.
-local function newExplosion(x, y)
+newExplosion = function(x, y)
     local s = gfx.sprite.new()
 
     -- custom fields
@@ -219,6 +290,19 @@ end
 local function drawWorld()
     gfx.clear()
 
+    -- enemy missiles (trail + body)
+    for _, e in ipairs(enemies) do
+        if #e.trail > 1 then
+            for j = 2, #e.trail do
+                local a, b = e.trail[j-1], e.trail[j]
+                gfx.drawLine(a.x, a.y, b.x, b.y)
+            end
+        end
+        gfx.fillCircleAtPoint(e.x, e.y, ENEMY_MISSILE_SIZE)
+        gfx.drawLine(e.x, e.y, e.x + (e.vx * 2), e.y + (e.vy * 2))
+    end
+
+
     -- guide & live crosshair
     local originX, originY = screenW/2, screenH
     gfx.drawLine(originX, originY, currentReticleX, currentReticleY)
@@ -267,7 +351,13 @@ function playdate.update()
         -- (leave missiles flying; add missiles = {} here if EMP should cancel them)
     end
 
+    if playdate.buttonJustPressed(playdate.kButtonA) then
+        launchEnemyMissile(math.random(0, screenW), math.random(40, screenW-40))
+    end
+
     updateMissiles()
+    updateEnemies()
+
 
     -- draw primitives now (so you see them even before the first explosion sprite ever spawns)
     drawWorld()
