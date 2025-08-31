@@ -1,6 +1,6 @@
-name=Game
-author=
-description=
-bundleID=
+name=Orbital Watch Launcher
+author=Rodney Aiglstorfer
+description=A reimagining of the old Missile Command game from the 80's for the Playdate.
+bundleID=edu.duke.ra311
 version=1.0.0
 buildNumber=1

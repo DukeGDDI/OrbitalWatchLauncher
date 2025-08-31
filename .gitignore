@@ -10,7 +10,7 @@ Thumbs.db
 Desktop.ini
 
 # Editor-specific files (e.g., VS Code)
-.vscode/
+# .vscode/
 *.sublime-project
 *.sublime-workspace
 
