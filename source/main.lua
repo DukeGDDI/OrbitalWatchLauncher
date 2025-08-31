@@ -28,10 +28,11 @@ local EXPLOSION_Z          = 100     -- draw on top of primitives
 local TARGET_CROSS         = 5
 
 -- Enemy Missile Config
-local ENEMY_MISSILE_SPEED   = 2.8   -- px/frame (slightly slower than player)
+local ENEMY_MISSILE_SPEED   = 1.5   -- px/frame (slightly slower than player)
 local ENEMY_TRAIL_MAX_POINTS= 30
 local ENEMY_TRAIL_STEP      = 3
 local ENEMY_MISSILE_SIZE    = 2
+local ENEMY_SPAWN_RATE      = 0.02
 
 
 -- ===== State =====
@@ -43,6 +44,8 @@ local currentReticleX, currentReticleY = 0, 0
 local targets = {}        -- { {x=, y=} }
 local missiles = {}       -- missiles are tables (primitives), explosions are sprites
 local enemies = {}   -- enemy missiles (same structure as player missiles)
+local explosions = {}  -- holds active explosion sprites we create
+
 
 -- Forward declaration so functions defined above can call it
 local newExplosion
@@ -52,6 +55,14 @@ local function clamp(v, lo, hi)
     if v < lo then return lo end
     if v > hi then return hi end
     return v
+end
+
+local function pruneExplosions()
+    for i = #explosions, 1, -1 do
+        if explosions[i].__dead then
+            table.remove(explosions, i)
+        end
+    end
 end
 
 -- Launch an enemy missile from top (xOrigin, 0) to ground (xTarget, screenH)
@@ -83,6 +94,9 @@ local function launchEnemyMissile(xOrigin, xTarget)
 end
 
 local function updateEnemies()
+    -- (optionally clear out finished explosion refs first)
+    pruneExplosions()
+
     for i = #enemies, 1, -1 do
         local e = enemies[i]
 
@@ -100,18 +114,42 @@ local function updateEnemies()
             end
         end
 
-        -- arrival?
+        -- **Explosion overlap check** — detonate enemy if inside any player explosion
+        local destroyedByExplosion = false
+        for _, ex in ipairs(explosions) do
+            if not ex.__dead then
+                local exdx, exdy = e.x - ex.cx, e.y - ex.cy
+                if (exdx*exdx + exdy*exdy) <= (ex.r * ex.r) then
+                    -- Enemy enters blast radius: explode enemy here
+                    newExplosion(e.x, e.y)
+                    table.remove(enemies, i)
+                    destroyedByExplosion = true
+                    break
+                end
+            end
+        end
+        if destroyedByExplosion then
+            goto continue_enemy_loop
+        end
+
+        -- arrival at ground?
         local txd, tyd = (e.tx - e.x), (e.ty - e.y)
         local dist2 = txd*txd + tyd*tyd
         if dist2 <= (e.speed * e.speed) then
-            -- snap to target, spawn explosion, remove enemy
             e.x, e.y = e.tx, e.ty
-            newExplosion(e.x, e.y)
+            newExplosion(e.x, e.y)  -- ground impact explosion
             table.remove(enemies, i)
         end
+
+        ::continue_enemy_loop::
     end
 end
 
+local function randomSpawnEnemyMissile()
+     if math.random() < ENEMY_SPAWN_RATE then  -- % per frame while held
+        launchEnemyMissile(math.random(0, screenW), math.random(40, screenW-40))
+    end
+end
 
 
 -- ===== Explosion Sprite (instance-based, no metatable) =====
@@ -124,27 +162,25 @@ newExplosion = function(x, y)
     s.r = 0
     s.maxR = EXPLOSION_MAX_RADIUS
     s.growth = EXPLOSION_GROWTH
+    s.__dead = false  -- we’ll use this to purge finished explosions
 
     -- position & draw order
-    s:moveTo(x, y)           -- center is (x,y)
+    s:moveTo(x, y)
     s:setZIndex(EXPLOSION_Z)
 
-    -- start with a 1x1 image; we'll rebuild it as we grow
     local img = gfx.image.new(1, 1)
     s:setImage(img)
     s:setCollideRect(0, 0, 1, 1)
 
-    -- per-frame growth + redraw + collision box sync
     function s:update()
         self.r += self.growth
         if self.r >= self.maxR then
+            self.__dead = true
             self:remove()
             return
         end
 
         local d = math.max(1, math.ceil(self.r * 2))
-
-        -- redraw rings at new diameter
         local newImg = gfx.image.new(d, d)
         gfx.pushContext(newImg)
             gfx.drawCircleInRect(0, 0, d, d)
@@ -157,19 +193,12 @@ newExplosion = function(x, y)
 
         self:setImage(newImg)
         self:setCollideRect(0, 0, d, d)
-
-        -- Example: detect overlaps (uncomment when you have other sprites)
-        -- for _, other in ipairs(self:overlappingSprites()) do
-        --     -- handle overlap with other
-        -- end
     end
 
     s:add()
+    table.insert(explosions, s)  -- <-- track it
     return s
 end
-
-
-
 
 
 -- ===== Targets =====
@@ -357,6 +386,8 @@ function playdate.update()
 
     updateMissiles()
     updateEnemies()
+    pruneExplosions()
+
 
 
     -- draw primitives now (so you see them even before the first explosion sprite ever spawns)
@@ -364,4 +395,6 @@ function playdate.update()
 
     -- draw sprites (explosions)
     gfx.sprite.update()
+
+    randomSpawnEnemyMissile()
 end
