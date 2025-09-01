@@ -117,10 +117,10 @@ local function updateEnemies()
         -- **Explosion overlap check** — detonate enemy if inside any player explosion
         local destroyedByExplosion = false
         for _, ex in ipairs(explosions) do
-            if not ex.__dead then
-                local exdx, exdy = e.x - ex.cx, e.y - ex.cy
-                if (exdx*exdx + exdy*exdy) <= (ex.r * ex.r) then
-                    -- Enemy enters blast radius: explode enemy here
+            local exx, exy, exr, exdead = ex:getBlast()
+            if not exdead then
+                local exdx, exdy = e.x - exx, e.y - exy
+                if (exdx*exdx + exdy*exdy) <= (exr * exr) then
                     newExplosion(e.x, e.y)
                     table.remove(enemies, i)
                     destroyedByExplosion = true
@@ -128,6 +128,7 @@ local function updateEnemies()
                 end
             end
         end
+
         if destroyedByExplosion then
             goto continue_enemy_loop
         end
@@ -158,11 +159,11 @@ newExplosion = function(x, y)
     local s = gfx.sprite.new()
 
     -- custom fields
-    s.cx, s.cy = x, y
-    s.r = 0
-    s.maxR = EXPLOSION_MAX_RADIUS
-    s.growth = EXPLOSION_GROWTH
-    s.__dead = false  -- we’ll use this to purge finished explosions
+    local cx, cy = x, y
+    local r = 0
+    local maxR = EXPLOSION_MAX_RADIUS
+    local growth = EXPLOSION_GROWTH
+    local dead = false  -- we’ll use this to purge finished explosions
 
     -- position & draw order
     s:moveTo(x, y)
@@ -172,27 +173,32 @@ newExplosion = function(x, y)
     s:setImage(img)
     s:setCollideRect(0, 0, 1, 1)
 
-    function s:update()
-        self.r += self.growth
-        if self.r >= self.maxR then
-            self.__dead = true
-            self:remove()
+    -- tiny read-only accessor so updateEnemies() can do distance checks
+    function s:getBlast()
+        return cx, cy, r, dead
+    end
+
+    s.update = function()
+        r += growth
+        if r >= maxR then
+            dead = true
+            s:remove()
             return
         end
 
-        local d = math.max(1, math.ceil(self.r * 2))
+        local d = math.max(1, math.ceil(r * 2))
         local newImg = gfx.image.new(d, d)
         gfx.pushContext(newImg)
             gfx.drawCircleInRect(0, 0, d, d)
-            local inner = math.floor(self.r * 0.6) * 2
+            local inner = math.floor(r * 0.6) * 2
             if inner > 2 then
                 local inset = math.floor((d - inner) / 2)
                 gfx.drawCircleInRect(inset, inset, inner, inner)
             end
         gfx.popContext()
 
-        self:setImage(newImg)
-        self:setCollideRect(0, 0, d, d)
+        s:setImage(newImg)
+        s:setCollideRect(0, 0, d, d)
     end
 
     s:add()
