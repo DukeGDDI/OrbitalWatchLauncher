@@ -44,6 +44,31 @@
                 "kind": "build",
                 "isDefault": true,
             }
-        }
+        },
+        {
+            // Creates a Zip file containing the *.pdx directory from the /builds directory
+            // IMPORTANT: Expects /scripts/zip-pdx.ps1
+            "label": "Playdate: Zip PDX",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", "${workspaceFolder}/scripts/zip-pdx.ps1"
+            ],
+            "problemMatcher": []
+        },
+        {
+            // Build and then zips the .pdx
+            "label": "Playdate: Build and Zip PDX",
+            "dependsOn": ["Playdate: Build", "Playdate: Zip PDX"],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true,
+            }
+        },
+
+
     ]
 }
