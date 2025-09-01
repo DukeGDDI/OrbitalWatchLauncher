@@ -129,20 +129,16 @@ local function updateEnemies()
             end
         end
 
-        if destroyedByExplosion then
-            goto continue_enemy_loop
+        if destroyedByExplosion == false then
+             -- arrival at ground?
+            local txd, tyd = (e.tx - e.x), (e.ty - e.y)
+            local dist2 = txd*txd + tyd*tyd
+            if dist2 <= (e.speed * e.speed) then
+                e.x, e.y = e.tx, e.ty
+                newExplosion(e.x, e.y)  -- ground impact explosion
+                table.remove(enemies, i)
+            end
         end
-
-        -- arrival at ground?
-        local txd, tyd = (e.tx - e.x), (e.ty - e.y)
-        local dist2 = txd*txd + tyd*tyd
-        if dist2 <= (e.speed * e.speed) then
-            e.x, e.y = e.tx, e.ty
-            newExplosion(e.x, e.y)  -- ground impact explosion
-            table.remove(enemies, i)
-        end
-
-        ::continue_enemy_loop::
     end
 end
 
