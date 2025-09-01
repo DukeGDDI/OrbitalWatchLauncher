@@ -206,13 +206,6 @@ local function markTarget(x, y)
     table.insert(targets, { x = x, y = y })
 end
 
-local function drawTargets()
-    for _, t in ipairs(targets) do
-        gfx.drawLine(t.x - TARGET_CROSS, t.y, t.x + TARGET_CROSS, t.y)
-        gfx.drawLine(t.x, t.y - TARGET_CROSS, t.x, t.y + TARGET_CROSS)
-    end
-end
-
 -- ===== Missiles (primitive, not sprites) =====
 -- missile: { x,y, tx,ty, vx,vy, speed, trail={}, lastTrailX,lastTrailY }
 local function launchMissile(targetX, targetY)
@@ -276,21 +269,6 @@ local function updateMissiles()
             -- Remove missile (now handled visually by sprite)
             table.remove(missiles, i)
         end
-    end
-end
-
-local function drawMissiles()
-    for _, m in ipairs(missiles) do
-        -- trail
-        if #m.trail > 1 then
-            for j = 2, #m.trail do
-                local a, b = m.trail[j-1], m.trail[j]
-                gfx.drawLine(a.x, a.y, b.x, b.y)
-            end
-        end
-        -- tiny missile primitives
-        gfx.fillCircleAtPoint(m.x, m.y, MISSILE_SIZE)
-        gfx.drawLine(m.x, m.y, m.x + (m.vx * 2), m.y + (m.vy * 2))
     end
 end
 
