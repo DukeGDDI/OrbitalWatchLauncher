@@ -10,30 +10,32 @@ local gfx <const> = playdate.graphics
 local SCREEN_WIDTH, SCREEN_HEIGHT = 400, 240
 
 -- ===== Config =====
-local MIN_DISTANCE         = 15
-local MAX_DISTANCE         = 250
+local DEFAULTS = {
+    MIN_DISTANCE         = 15,
+    MAX_DISTANCE         = 250,
 
-local DISTANCE_SPEED       = 2.2     -- px/frame (Up/Down)
-local CRANK_ANGLE_SENS     = 1.0     -- deg reticle rotation per 1 deg crank change
+    DISTANCE_SPEED       = 2.2,     -- px/frame (Up/Down)
+    CRANK_ANGLE_SENS     = 1.0,     -- deg reticle rotation per 1 deg crank change
 
-local MISSILE_SPEED        = 4.0
-local MISSILE_SIZE         = 2
-local TRAIL_MAX_POINTS     = 30
-local TRAIL_STEP           = 3
+    MISSILE_SPEED        = 4.0,
+    MISSILE_SIZE         = 2,
+    TRAIL_MAX_POINTS     = 30,
+    TRAIL_STEP           = 3,
 
--- Explosion sprite tuning (collision-enabled)
-local EXPLOSION_MAX_RADIUS = 22
-local EXPLOSION_GROWTH     = 1.8
-local EXPLOSION_Z          = 100     -- draw on top of primitives
+    -- Explosion sprite tuning (collision-enabled)
+    EXPLOSION_MAX_RADIUS = 22,
+    EXPLOSION_GROWTH     = 1.8,
+    EXPLOSION_Z          = 100,     -- draw on top of primitives
 
-local TARGET_CROSS         = 5
+    TARGET_CROSS         = 5,
 
--- Enemy Missile Config
-local ENEMY_MISSILE_SPEED    = 1.5   -- px/frame (slightly slower than player)
-local ENEMY_TRAIL_MAX_POINTS = 30
-local ENEMY_TRAIL_STEP       = 3
-local ENEMY_MISSILE_SIZE     = 2
-local ENEMY_SPAWN_RATE       = 0.02
+    -- Enemy Missile Config
+    ENEMY_MISSILE_SPEED    = 1.5,   -- px/frame (slightly slower than player)
+    ENEMY_TRAIL_MAX_POINTS = 30,
+    ENEMY_TRAIL_STEP       = 3,
+    ENEMY_MISSILE_SIZE     = 2,
+    ENEMY_SPAWN_RATE       = 0.02,
+}
 
 -- ===== Utils =====
 local function clamp(v, lo, hi)
@@ -42,12 +44,23 @@ local function clamp(v, lo, hi)
     return v
 end
 
+-- Merge user config with defaults
+local function mergedConfig(user)
+    -- Create a new table that reads missing keys from DEFAULTS (no mutation of DEFAULTS)
+    local out = {}
+    if user then
+        for k,v in pairs(user) do out[k] = v end
+    end
+    return setmetatable(out, { __index = DEFAULTS })
+end
+
 -- ===== Class =====
 GamePlay = {}
 GamePlay.__index = GamePlay
 
-function GamePlay.new()
+function GamePlay.new(config)
     local self = setmetatable({}, GamePlay)
+    self.cfg = mergedConfig(config)
 
     -- State
     self.reticleAngle = 270
@@ -69,17 +82,18 @@ end
 
 -- ===== Explosion Sprite (instance-based) =====
 function GamePlay:newExplosion(x, y)
+    local C = self.cfg
     local s = gfx.sprite.new()
 
     -- custom fields (closed over)
     local cx, cy = x, y
     local r = 0
-    local maxR = EXPLOSION_MAX_RADIUS
-    local growth = EXPLOSION_GROWTH
+    local maxR = C.EXPLOSION_MAX_RADIUS
+    local growth = C.EXPLOSION_GROWTH
     local dead = false
 
     s:moveTo(x, y)
-    s:setZIndex(EXPLOSION_Z)
+    s:setZIndex(C.EXPLOSION_Z)
 
     local img = gfx.image.new(1, 1)
     s:setImage(img)
@@ -132,19 +146,20 @@ end
 
 -- ===== Player Missiles =====
 function GamePlay:launchMissile(targetX, targetY)
+    local C = self.cfg
     local originX, originY = SCREEN_WIDTH/2, SCREEN_HEIGHT
     local dx, dy = (targetX - originX), (targetY - originY)
     local len = math.sqrt(dx*dx + dy*dy)
     if len < 0.001 then return end
 
-    local vx = (dx / len) * MISSILE_SPEED
-    local vy = (dy / len) * MISSILE_SPEED
+    local vx = (dx / len) * C.MISSILE_SPEED
+    local vy = (dy / len) * C.MISSILE_SPEED
 
     local m = {
         x = originX, y = originY,
         tx = targetX, ty = targetY,
         vx = vx, vy = vy,
-        speed = MISSILE_SPEED,
+        speed = C.MISSILE_SPEED,
         trail = {},
         lastTrailX = originX,
         lastTrailY = originY
@@ -153,6 +168,7 @@ function GamePlay:launchMissile(targetX, targetY)
 end
 
 function GamePlay:updateMissiles()
+    local C = self.cfg
     for i = #self.missiles, 1, -1 do
         local m = self.missiles[i]
 
@@ -162,10 +178,10 @@ function GamePlay:updateMissiles()
 
         -- trail
         local dx, dy = (m.x - m.lastTrailX), (m.y - m.lastTrailY)
-        if (dx*dx + dy*dy) >= (TRAIL_STEP * TRAIL_STEP) then
+        if (dx*dx + dy*dy) >= (C.TRAIL_STEP * C.TRAIL_STEP) then
             table.insert(m.trail, { x = m.x, y = m.y })
             m.lastTrailX, m.lastTrailY = m.x, m.y
-            if #m.trail > TRAIL_MAX_POINTS then
+            if #m.trail > C.TRAIL_MAX_POINTS then
                 table.remove(m.trail, 1)
             end
         end
@@ -196,6 +212,7 @@ end
 
 -- ===== Enemy Missiles =====
 function GamePlay:launchEnemyMissile(xOrigin, xTarget)
+    local C = self.cfg
     xOrigin = clamp(xOrigin, 0, SCREEN_WIDTH)
     xTarget = clamp(xTarget, 0, SCREEN_WIDTH)
 
@@ -206,14 +223,14 @@ function GamePlay:launchEnemyMissile(xOrigin, xTarget)
     local len = math.sqrt(dx*dx + dy*dy)
     if len < 0.001 then return end
 
-    local vx = (dx / len) * ENEMY_MISSILE_SPEED
-    local vy = (dy / len) * ENEMY_MISSILE_SPEED
+    local vx = (dx / len) * C.ENEMY_MISSILE_SPEED
+    local vy = (dy / len) * C.ENEMY_MISSILE_SPEED
 
     local e = {
         x = originX, y = originY,
         tx = targetX, ty = targetY,
         vx = vx, vy = vy,
-        speed = ENEMY_MISSILE_SPEED,
+        speed = C.ENEMY_MISSILE_SPEED,
         trail = {},
         lastTrailX = originX,
         lastTrailY = originY
@@ -222,6 +239,7 @@ function GamePlay:launchEnemyMissile(xOrigin, xTarget)
 end
 
 function GamePlay:updateEnemies()
+    local C = self.cfg
     self:pruneExplosions()
 
     for i = #self.enemies, 1, -1 do
@@ -233,10 +251,10 @@ function GamePlay:updateEnemies()
 
         -- trail
         local dx, dy = (e.x - e.lastTrailX), (e.y - e.lastTrailY)
-        if (dx*dx + dy*dy) >= (ENEMY_TRAIL_STEP * ENEMY_TRAIL_STEP) then
+        if (dx*dx + dy*dy) >= (C.ENEMY_TRAIL_STEP * C.ENEMY_TRAIL_STEP) then
             table.insert(e.trail, { x = e.x, y = e.y })
             e.lastTrailX, e.lastTrailY = e.x, e.y
-            if #e.trail > ENEMY_TRAIL_MAX_POINTS then
+            if #e.trail > C.ENEMY_TRAIL_MAX_POINTS then
                 table.remove(e.trail, 1)
             end
         end
@@ -270,24 +288,26 @@ function GamePlay:updateEnemies()
 end
 
 function GamePlay:randomSpawnEnemyMissile()
-    if math.random() < ENEMY_SPAWN_RATE then
+    local C = self.cfg
+    if math.random() < C.ENEMY_SPAWN_RATE then
         self:launchEnemyMissile(math.random(0, SCREEN_WIDTH), math.random(40, SCREEN_WIDTH-40))
     end
 end
 
 -- ===== Reticle =====
 function GamePlay:moveReticle()
+    local C = self.cfg
     -- rotation via crank
     local crankDeltaDeg = playdate.getCrankChange()
-    self.reticleAngle += crankDeltaDeg * CRANK_ANGLE_SENS
+    self.reticleAngle += crankDeltaDeg * C.CRANK_ANGLE_SENS
 
     -- distance via Up/Down
     if playdate.buttonIsPressed(playdate.kButtonUp) then
-        self.reticleDistance += DISTANCE_SPEED
+        self.reticleDistance += C.DISTANCE_SPEED
     elseif playdate.buttonIsPressed(playdate.kButtonDown) then
-        self.reticleDistance -= DISTANCE_SPEED
+        self.reticleDistance -= C.DISTANCE_SPEED
     end
-    self.reticleDistance = clamp(self.reticleDistance, MIN_DISTANCE, MAX_DISTANCE)
+    self.reticleDistance = clamp(self.reticleDistance, C.MIN_DISTANCE, C. MAX_DISTANCE)
 
     -- polar -> cartesian
     local rad = math.rad(self.reticleAngle)
@@ -298,6 +318,7 @@ end
 
 -- ===== Drawing (primitives; sprites draw via gfx.sprite.update) =====
 function GamePlay:drawWorld()
+    local C = self.cfg
     gfx.clear()
 
     -- enemy missiles (trail + body)
@@ -308,7 +329,7 @@ function GamePlay:drawWorld()
                 gfx.drawLine(a.x, a.y, b.x, b.y)
             end
         end
-        gfx.fillCircleAtPoint(e.x, e.y, ENEMY_MISSILE_SIZE)
+        gfx.fillCircleAtPoint(e.x, e.y, C.ENEMY_MISSILE_SIZE)
         gfx.drawLine(e.x, e.y, e.x + (e.vx * 2), e.y + (e.vy * 2))
     end
 
@@ -321,8 +342,8 @@ function GamePlay:drawWorld()
 
     -- targets
     for _, t in ipairs(self.targets) do
-        gfx.drawLine(t.x - TARGET_CROSS, t.y, t.x + TARGET_CROSS, t.y)
-        gfx.drawLine(t.x, t.y - TARGET_CROSS, t.x, t.y + TARGET_CROSS)
+        gfx.drawLine(t.x - C.TARGET_CROSS, t.y, t.x + C.TARGET_CROSS, t.y)
+        gfx.drawLine(t.x, t.y - C.TARGET_CROSS, t.x, t.y + C.TARGET_CROSS)
     end
 
     -- player missiles (trail + body)
@@ -333,7 +354,7 @@ function GamePlay:drawWorld()
                 gfx.drawLine(a.x, a.y, b.x, b.y)
             end
         end
-        gfx.fillCircleAtPoint(m.x, m.y, MISSILE_SIZE)
+        gfx.fillCircleAtPoint(m.x, m.y, C.MISSILE_SIZE)
         gfx.drawLine(m.x, m.y, m.x + (m.vx * 2), m.y + (m.vy * 2))
     end
 end
