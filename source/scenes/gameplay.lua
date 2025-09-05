@@ -7,7 +7,7 @@ import "CoreLibs/keyboard"
 local gfx <const> = playdate.graphics
 
 -- ===== Screen =====
-local screenW, screenH = 400, 240
+local SCREEN_WIDTH, SCREEN_HEIGHT = 400, 240
 
 -- ===== Config =====
 local MIN_DISTANCE         = 15
@@ -132,7 +132,7 @@ end
 
 -- ===== Player Missiles =====
 function GamePlay:launchMissile(targetX, targetY)
-    local originX, originY = screenW/2, screenH
+    local originX, originY = SCREEN_WIDTH/2, SCREEN_HEIGHT
     local dx, dy = (targetX - originX), (targetY - originY)
     local len = math.sqrt(dx*dx + dy*dy)
     if len < 0.001 then return end
@@ -196,11 +196,11 @@ end
 
 -- ===== Enemy Missiles =====
 function GamePlay:launchEnemyMissile(xOrigin, xTarget)
-    xOrigin = clamp(xOrigin, 0, screenW)
-    xTarget = clamp(xTarget, 0, screenW)
+    xOrigin = clamp(xOrigin, 0, SCREEN_WIDTH)
+    xTarget = clamp(xTarget, 0, SCREEN_WIDTH)
 
     local originX, originY = xOrigin, 0
-    local targetX, targetY = xTarget, screenH
+    local targetX, targetY = xTarget, SCREEN_HEIGHT
 
     local dx, dy = (targetX - originX), (targetY - originY)
     local len = math.sqrt(dx*dx + dy*dy)
@@ -271,7 +271,7 @@ end
 
 function GamePlay:randomSpawnEnemyMissile()
     if math.random() < ENEMY_SPAWN_RATE then
-        self:launchEnemyMissile(math.random(0, screenW), math.random(40, screenW-40))
+        self:launchEnemyMissile(math.random(0, SCREEN_WIDTH), math.random(40, SCREEN_WIDTH-40))
     end
 end
 
@@ -291,7 +291,7 @@ function GamePlay:moveReticle()
 
     -- polar -> cartesian
     local rad = math.rad(self.reticleAngle)
-    local originX, originY = screenW/2, screenH
+    local originX, originY = SCREEN_WIDTH/2, SCREEN_HEIGHT
     self.currentReticleX = originX + math.cos(rad) * self.reticleDistance
     self.currentReticleY = originY + math.sin(rad) * self.reticleDistance
 end
@@ -313,7 +313,7 @@ function GamePlay:drawWorld()
     end
 
     -- guide & live crosshair
-    local originX, originY = screenW/2, screenH
+    local originX, originY = SCREEN_WIDTH/2, SCREEN_HEIGHT
     gfx.drawLine(originX, originY, self.currentReticleX, self.currentReticleY)
     local liveCross = 5
     gfx.drawLine(self.currentReticleX - liveCross, self.currentReticleY, self.currentReticleX + liveCross, self.currentReticleY)
@@ -354,7 +354,7 @@ function GamePlay:update()
     end
 
     if playdate.buttonJustPressed(playdate.kButtonA) then
-        self:launchEnemyMissile(math.random(0, screenW), math.random(40, screenW-40))
+        self:launchEnemyMissile(math.random(0, SCREEN_WIDTH), math.random(40, SCREEN_WIDTH-40))
     end
 
     self:updateMissiles()
