@@ -5,6 +5,7 @@ import "CoreLibs/sprites"
 import "CoreLibs/timer"
 
 import "scenes/gameplay"
+import "scenes/splash"
 
 local game = GamePlay.new({
     MISSILE_SPEED = 5.5,
@@ -12,7 +13,19 @@ local game = GamePlay.new({
     TARGET_CROSS = 7,
     EXPLOSION_MAX_RADIUS = 28,
 })
+local gfx <const> = playdate.graphics
+local menu = SplashMenu.new()
 
 function playdate.update()
-    game:update()
+    --game:update()
+
+    playdate.timer.updateTimers()
+    gfx.sprite.update()
+
+    menu:update()
+    menu:draw()
+
+    if playdate.isCrankDocked() then
+        playdate.ui.crankIndicator:draw()
+    end
 end
