@@ -11,30 +11,30 @@ local SCREEN_WIDTH, SCREEN_HEIGHT = 400, 240
 
 -- ===== Config =====
 local DEFAULTS = {
-    MIN_DISTANCE         = 15,
-    MAX_DISTANCE         = 250,
+    MIN_DISTANCE         = 15,      -- px from origin
+    MAX_DISTANCE         = 200,     -- px from origin
 
     DISTANCE_SPEED       = 2.2,     -- px/frame (Up/Down)
     CRANK_ANGLE_SENS     = 1.0,     -- deg reticle rotation per 1 deg crank change
 
-    MISSILE_SPEED        = 4.0,
-    MISSILE_SIZE         = 2,
-    TRAIL_MAX_POINTS     = 30,
-    TRAIL_STEP           = 3,
+    MISSILE_SPEED        = 4.0,     -- px/frame
+    MISSILE_SIZE         = 2,       -- radius
+    TRAIL_MAX_POINTS     = 30,      -- max points in trail
+    TRAIL_STEP           = 3,       -- min distance moved before adding new trail point
 
     -- Explosion sprite tuning (collision-enabled)
-    EXPLOSION_MAX_RADIUS = 22,
-    EXPLOSION_GROWTH     = 1.8,
+    EXPLOSION_MAX_RADIUS = 22,      -- max radius
+    EXPLOSION_GROWTH     = 1.8,     -- px/frame (how fast explosion expands)
     EXPLOSION_Z          = 100,     -- draw on top of primitives
 
     TARGET_CROSS         = 5,
 
     -- Enemy Missile Config
     ENEMY_MISSILE_SPEED    = 1.5,   -- px/frame (slightly slower than player)
-    ENEMY_TRAIL_MAX_POINTS = 30,
-    ENEMY_TRAIL_STEP       = 3,
-    ENEMY_MISSILE_SIZE     = 2,
-    ENEMY_SPAWN_RATE       = 0.02,
+    ENEMY_TRAIL_MAX_POINTS = 30,    -- max points in trail
+    ENEMY_TRAIL_STEP       = 3,      -- min distance moved before adding new trail point
+    ENEMY_MISSILE_SIZE     = 2,      -- radius of enemy missile
+    ENEMY_SPAWN_RATE       = 0.02,   -- chance per frame to spawn a new enemy missile
 }
 
 -- ===== Utils =====
@@ -213,6 +213,7 @@ end
 -- ===== Enemy Missiles =====
 function GamePlay:launchEnemyMissile(xOrigin, xTarget)
     local C = self.cfg
+    -- 
     xOrigin = clamp(xOrigin, 0, SCREEN_WIDTH)
     xTarget = clamp(xTarget, 0, SCREEN_WIDTH)
 
