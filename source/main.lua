@@ -14,18 +14,15 @@ local game = GamePlay.new({
     EXPLOSION_MAX_RADIUS = 28,
 })
 local gfx <const> = playdate.graphics
-local menu = SplashMenu.new()
+local splashImage = gfx.image.new("images/launchImage.png") -- load the image
 
 function playdate.update()
-    --game:update()
-
-    playdate.timer.updateTimers()
-    gfx.sprite.update()
-
-    menu:update()
-    menu:draw()
-
     if playdate.isCrankDocked() then
+        if splashImage then
+            splashImage:draw(0, 0) -- draw at top-left corner
+        end
         playdate.ui.crankIndicator:draw()
+    else
+        game:update()
     end
 end

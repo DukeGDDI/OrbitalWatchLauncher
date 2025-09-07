@@ -11,7 +11,7 @@ function SplashMenu.new()
     local self = setmetatable({}, SplashMenu)
 
     self.items = {
-        { label = "New Game",    id = "new",     requiresCrank = true  },
+        { label = "New Game",    id = "start",     requiresCrank = true  },
         { label = "Resume Game", id = "resume",  requiresCrank = true  },
         { label = "Settings",    id = "settings",requiresCrank = false },
     }
@@ -23,12 +23,14 @@ function SplashMenu.new()
     self.bgSprite = gfx.sprite.new(bg)
     self.bgSprite:moveTo(200, 120)
     self.bgSprite:setZIndex(0)
-    self.bgSprite:add()
+    -- self.bgSprite:add()
 
     -- Pre-calc menu layout
     self.centerX = 200
     self.centerY = 120
     self.spacing = 24
+
+    self.state = "menu" -- or "settings"
 
     -- If crank is docked on start, default to first selectable item
     self:fixSelectionForCrankState()
@@ -49,8 +51,9 @@ function SplashMenu:update()
     -- Select
     if playdate.buttonJustPressed(playdate.kButtonA) then
         local item = self.items[self.selected]
-
+        self.state = item.id
         print("Selected: " .. item.id)
+        self:hide()
     end
 end
 
@@ -100,4 +103,10 @@ function SplashMenu:draw()
     gfx.setDitherPattern(1.0)
 end
 
+function SplashMenu:hide()
+    self.bgSprite:remove()
+end
 
+function SplashMenu:show()
+    self.bgSprite:add()
+end
