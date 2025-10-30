@@ -1,12 +1,14 @@
-// Specifies that the debugger launch task should use the Playdate Debug extension
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "playdate",
-            "request": "launch",
-            "name": "Playdate: Debug",
-            "preLaunchTask": "${defaultBuildTask}"
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Playdate: Build & Run",
+      "type": "cppdbg",                 // or "lua" if you have a Lua debugger
+      "request": "launch",
+      "preLaunchTask": "Playdate: Build PDX",  // from tasks.json
+      "program": "${env:PLAYDATE_SDK_PATH}\\bin\\PlaydateSimulator.exe",
+      "args": ["build\\game.pdx"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
 }

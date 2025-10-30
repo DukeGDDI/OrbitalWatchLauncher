@@ -2,7 +2,7 @@
 {
     // ====== Lua Settings ======
     // The Playdate Lua runtime uses "import" instead of "require"
-    "Lua.diagnostics.globals": ["import"],
+    "Lua.diagnostics.globals": ["import", "playdate", "require"],
     // Sumneko Lua type definition doesn't support callbacks/overrides yet,
     // so do this to make playdate.update() override not complain as much
     "Lua.diagnostics.severity": {
@@ -26,7 +26,7 @@
     "Lua.runtime.version": "Lua 5.4",
     // Path to Playdate type definitions to get auto-complete and annotations
     "Lua.workspace.library": [
-        "./.vscode/playdate-luacats"
+        "C:\\Users\\Public\\PlaydateSDK\\CoreLibs"
     ],
 
     // ====== Playdate Debug Settings ======
